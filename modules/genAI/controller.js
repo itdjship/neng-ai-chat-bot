@@ -1,7 +1,7 @@
 /**
  * Optimized and robust controller for GenAI endpoints
  */
-import { generateText, generateFromFile } from '../../services/geminiService.js';
+import { generateText, generateFromFile, conversation, clearConversationHistory, getConversationHistory } from '../../services/geminiService.js';
 import { 
   validateFile, 
   prepareFileForAPI, 
@@ -43,7 +43,11 @@ class BaseController {
       if (fileData) {
         return await generateFromFile(prompt, fileData);
       } else {
-        return await generateText(prompt);
+        if(Array.isArray(prompt)) {
+          return await conversation(prompt);
+        }else{
+          return await generateText(prompt);
+        }
       }
     } catch (error) {
       // Re-throw with more context
@@ -151,6 +155,36 @@ class BaseController {
       sendInternalServerError(res, error, `Failed to generate content from ${fileType}`);
     }
   }
+
+  async handleConversationRequest(req, res, endpoint) {
+    const startTime = Date.now();
+    
+    try {
+      logRequest(req, endpoint);
+      
+      const { messages } = req.body || {};
+      
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        throw new Error('Valid messages array is required');
+      }
+
+      const generatedText = await this.performanceMonitoredGenerate(messages);
+      const processingTime = Date.now() - startTime;
+      
+      logSuccess(endpoint, processingTime, { 
+        promptLength: messages.length,
+        responseLength: generatedText.length 
+      });
+      
+      sendSuccessResponse(res, generatedText, 'Content generated successfully');
+      
+    } catch (error) {
+      logError(endpoint, error, { 
+        promptLength: req.body?.messages?.length || 0 
+      });
+      sendInternalServerError(res, error, 'Failed to generate content');
+    }
+  }
 }
 
 // Create controller instance
@@ -241,5 +275,65 @@ export async function getSupportedFileTypes(req, res) {
     sendSuccessResponse(res, fileTypesInfo, 'Supported file types retrieved successfully');
   } catch (error) {
     sendInternalServerError(res, error, 'Failed to retrieve file types information');
+  }
+}
+
+
+export async function chat(req, res) {
+  const startTime = Date.now();
+  
+  try {
+    logRequest(req, 'chat');
+    
+    const { messages } = req.body || {};
+    
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      throw new Error('Valid messages array is required');
+    }
+
+    // Use conversation function to maintain context
+    const generatedText = await conversation(messages);
+    const processingTime = Date.now() - startTime;
+    
+    logSuccess('chat', processingTime, { 
+      messagesCount: messages.length,
+      responseLength: generatedText.length 
+    });
+    
+    sendSuccessResponse(res, generatedText, 'Chat message processed successfully');
+    
+  } catch (error) {
+    logError('chat', error, { 
+      messagesCount: req.body?.messages?.length || 0 
+    });
+    sendInternalServerError(res, error, 'Failed to process chat message');
+  }
+}
+
+/**
+ * Clear conversation history
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export async function clearHistory(req, res) {
+  try {
+    clearConversationHistory();
+    sendSuccessResponse(res, null, 'Conversation history cleared successfully');
+  } catch (error) {
+    sendInternalServerError(res, error, 'Failed to clear conversation history');
+  }
+}
+
+/**
+ * Get conversation history
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export async function getHistory(req, res) {
+  try {
+    const history = getConversationHistory();
+    sendSuccessResponse(res, history, 'Conversation history retrieved successfully');
+  } catch (error) {
+    sendInternalServerError(res, error, 'Failed to retrieve conversation history');
   }
 }
