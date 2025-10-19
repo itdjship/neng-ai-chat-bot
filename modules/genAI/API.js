@@ -7,7 +7,10 @@ import {
   generateAudio,
   generateVideo,
   healthCheck,
-  getSupportedFileTypes
+  getSupportedFileTypes,
+  chat,
+  clearHistory,
+  getHistory
 } from "./controller.js";
 import { 
   validatePrompt,
@@ -16,6 +19,7 @@ import {
   validateContentType,
   createRateLimiter
 } from "../../middleware/validation.js";
+import { chatValidate } from "../../middleware/joiValidation.js";
 import { FILE_TYPES } from "../../utils/fileValidation.js";
 
 const router = express.Router();
@@ -140,6 +144,15 @@ router.post("/generate-from-video",
   validateFileUpload('video'),
   generateVideo
 );
+
+router.post("/chat", 
+  chatValidate,
+  chat
+);
+
+// Conversation history management
+router.delete("/chat/history", clearHistory);
+router.get("/chat/history", getHistory);
 
 // Global error handler
 router.use((error, req, res, next) => {
